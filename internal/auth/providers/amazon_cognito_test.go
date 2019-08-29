@@ -58,9 +58,9 @@ func TestAmazonCognitoProviderDefaults(t *testing.T) {
 			signInURL:   "https://test.amazonCognito.com/oauth2/authorize",
 			redeemURL:   "https://test.amazonCognito.com/oauth2/token",
 			revokeURL:   "", // TODO
-			profileURL:  "https://test.amazonCognito.com/oauth2/userinfo",
-			validateURL: "https://test.amazonCognito.com/oauth2/userinfo",
-			scope:       "openid profile email groups",
+			profileURL:  "https://test.amazonCognito.com/oauth2/userInfo",
+			validateURL: "https://test.amazonCognito.com/oauth2/userInfo",
+			scope:       "openid profile email aws.cognito.signin.user.admin",
 		},
 	}
 	for _, expected := range expectedResults {
