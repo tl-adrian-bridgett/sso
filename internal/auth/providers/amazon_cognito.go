@@ -2,7 +2,6 @@ package providers
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,7 +55,7 @@ func NewAmazonCognitoProvider(p *ProviderData, OrgURL string) (*AmazonCognitoPro
 	p.ProfileURL = &url.URL{
 		Scheme: scheme,
 		Host:   OrgURL,
-		Path:   "/oauth2/userinfo",
+		Path:   "/oauth2/userInfo",
 	}
 
 	// TODO: This isn't a validate endpoint but repeating userinfo
@@ -64,11 +63,11 @@ func NewAmazonCognitoProvider(p *ProviderData, OrgURL string) (*AmazonCognitoPro
 	p.ValidateURL = &url.URL{
 		Scheme: scheme,
 		Host:   OrgURL,
-		Path:   "/oauth2/userinfo",
+		Path:   "/oauth2/userInfo",
 	}
 
 	if p.Scope == "" {
-		p.Scope = "openid profile email groups"
+		p.Scope = "openid profile email aws.cognito.signin.user.admin"
 	}
 
 	amazonCognitoProvider := &AmazonCognitoProvider{
@@ -126,7 +125,7 @@ func (p *AmazonCognitoProvider) GetSignInURL(redirectURI, state string) string {
 	return a.String()
 }
 
-func (p *AmazonCognitoProvider) amazonCognitoRequest(method, endpoint string, params url.Values, tags []string, header http.Header, response interface{}) error {
+func (p *AmazonCognitoProvider) amazonCognitoRequest(method, endpoint string, params url.Values, tags []string, header http.Header, basicAuth bool, response interface{}) error {
 	logger := log.NewLogEntry()
 
 	startTS := time.Now()
@@ -153,6 +152,10 @@ func (p *AmazonCognitoProvider) amazonCognitoRequest(method, endpoint string, pa
 	}
 	if header != nil {
 		req.Header = header
+	}
+
+	if basicAuth {
+		req.SetBasicAuth(p.ClientID, p.ClientSecret)
 	}
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -236,6 +239,8 @@ func (p *AmazonCognitoProvider) cbStateChange(from, to circuit.State) {
 //     - a Base64 encoded id token which contains the user's email
 //       address and whether or not that email address is verified
 func (p *AmazonCognitoProvider) Redeem(redirectURL, code string) (*sessions.SessionState, error) {
+	logger := log.NewLogEntry()
+
 	if code == "" {
 		return nil, ErrBadRequest
 	}
@@ -253,14 +258,12 @@ func (p *AmazonCognitoProvider) Redeem(redirectURL, code string) (*sessions.Sess
 		IDToken      string `json:"id_token"`
 	}
 
-	b64auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", p.ClientID, p.ClientSecret)))
-	header := http.Header{}
-	header.Set("Authorization", fmt.Sprintf("Basic %s", b64auth))
-
-	err := p.amazonCognitoRequest("POST", p.RedeemURL.String(), params, []string{"action:redeem"}, nil, &response)
+	err := p.amazonCognitoRequest("POST", p.RedeemURL.String(), params, []string{"action:redeem"}, nil, true, &response)
 	if err != nil {
 		return nil, err
 	}
+
+	logger.Info(fmt.Sprintf("response %#v", response))
 
 	email, err := p.verifyEmailWithAccessToken(response.AccessToken)
 	if err != nil {
@@ -318,7 +321,7 @@ func (p *AmazonCognitoProvider) GetUserProfile(AccessToken string) (*GetUserProf
 	header := http.Header{}
 	header.Set("Authorization", bearer)
 
-	err := p.amazonCognitoRequest("GET", p.ProfileURL.String(), nil, []string{"action:userinfo"}, header, response)
+	err := p.amazonCognitoRequest("GET", p.ProfileURL.String(), nil, []string{"action:userinfo"}, header, false, response)
 	if err != nil {
 		return nil, err
 	}
@@ -359,11 +362,7 @@ func (p *AmazonCognitoProvider) RefreshAccessToken(refreshToken string) (token s
 		ExpiresIn   int64  `json:"expires_in"`
 	}
 
-	b64auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", p.ClientID, p.ClientSecret)))
-	header := http.Header{}
-	header.Set("Authorization", fmt.Sprintf("Basic %s", b64auth))
-
-	err = p.amazonCognitoRequest("POST", p.RedeemURL.String(), params, []string{"action:refresh"}, header, &response)
+	err = p.amazonCognitoRequest("POST", p.RedeemURL.String(), params, []string{"action:refresh"}, nil, true, &response)
 	if err != nil {
 		return "", 0, err
 	}
