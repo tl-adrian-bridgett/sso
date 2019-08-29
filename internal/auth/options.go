@@ -52,6 +52,16 @@ func newProvider(pc ProviderConfig, sc SessionConfig) (providers.Provider, error
 		tags := []string{"provider:okta"}
 		cache := providers.NewGroupCache(oktaProvider, pc.GroupCacheConfig.CacheIntervalConfig.Provider, oktaProvider.StatsdClient, tags)
 		singleFlightProvider = providers.NewSingleFlightProvider(cache)
+	case providers.AmazonCognitoProviderName:
+		acpc := pc.AmazonCognitoProviderConfig
+		amazonCognitoProvider, err := providers.NewAmazonCognitoProvider(p, acpc.OrgURL)
+		if err != nil {
+			return nil, err
+		}
+
+		tags := []string{"provider:amazon_cognito"}
+		cache := providers.NewGroupCache(amazonCognitoProvider, pc.GroupCacheConfig.CacheIntervalConfig.Provider, amazonCognitoProvider.StatsdClient, tags)
+		singleFlightProvider = providers.NewSingleFlightProvider(cache)
 	case "test":
 		return providers.NewTestProvider(nil), nil
 	default:

@@ -289,7 +289,7 @@ type AmazonCognitoProviderConfig struct {
 }
 
 func (acpc AmazonCognitoProviderConfig) Validate() error {
-	if opc.OrgURL == "" {
+	if acpc.OrgURL == "" {
 		return xerrors.New("no cognito.url is configured")
 	}
 
