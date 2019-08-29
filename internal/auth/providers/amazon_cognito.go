@@ -386,7 +386,7 @@ func (p *AmazonCognitoProvider) RefreshAccessToken(refreshToken string) (token s
 // For the Amazon Cognito provider this triggers a global sign out for this user on all devices
 func (p *AmazonCognitoProvider) Revoke(s *sessions.SessionState) error {
 	_, err := p.cip.GlobalSignOut(&cognitoidentityprovider.GlobalSignOutInput{
-		AccessToken: *s.AccessToken,
+		AccessToken: &s.AccessToken,
 	})
 	if err != nil {
 		return err
