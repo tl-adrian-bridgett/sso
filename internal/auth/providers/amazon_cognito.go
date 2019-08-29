@@ -15,6 +15,10 @@ import (
 	log "github.com/buzzfeed/sso/internal/pkg/logging"
 	"github.com/buzzfeed/sso/internal/pkg/sessions"
 	"github.com/datadog/datadog-go/statsd"
+	"golang.org/x/xerrors"
+
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 )
 
 // AmazonCognitoProvider is an implementation of the Provider interface.
@@ -22,6 +26,7 @@ type AmazonCognitoProvider struct {
 	*ProviderData
 	StatsdClient *statsd.Client
 	cb           *circuit.Breaker
+	cip          *cognitoidentityprovider.CognitoIdentityProvider
 }
 
 // NewAmazonCognitoProvider returns a new AmazonCognitoProvider and sets the provider url endpoints.
@@ -70,8 +75,15 @@ func NewAmazonCognitoProvider(p *ProviderData, OrgURL string) (*AmazonCognitoPro
 		p.Scope = "openid profile email aws.cognito.signin.user.admin"
 	}
 
+	sess, err := session.NewSession()
+	if err != nil {
+		return nil, xerrors.Errorf("unable to create amazon session %w", err)
+	}
+	cip := cognitoidentityprovider.New(sess)
+
 	amazonCognitoProvider := &AmazonCognitoProvider{
 		ProviderData: p,
+		cip:          cip,
 	}
 
 	amazonCognitoProvider.cb = circuit.NewBreaker(&circuit.Options{
@@ -301,10 +313,10 @@ func (p *AmazonCognitoProvider) verifyEmailWithAccessToken(accessToken string) (
 }
 
 // ValidateGroupMembership takes in an email, a list of allowed groups an access token
-// TODO
 // - compares allowed groups to users' groups.
 // Conditionally returns an empty (nil) slice or a slice of the matching groups.
 func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGroups []string, accessToken string) ([]string, error) {
+	// TODO: This is currently non-functioning
 	return allowedGroups, nil
 }
 
@@ -371,10 +383,13 @@ func (p *AmazonCognitoProvider) RefreshAccessToken(refreshToken string) (token s
 }
 
 // Revoke revokes the refresh token from a given session state.
-// For the Amazon Cognito provider this triggers a global sign out
-// Revoking the refresh token implicitly revokes the access token, forcing re-authentication.
+// For the Amazon Cognito provider this triggers a global sign out for this user on all devices
 func (p *AmazonCognitoProvider) Revoke(s *sessions.SessionState) error {
-	// TODO: There is no revoke endpoint
-	// Global Sign Out?
+	_, err := p.cip.GlobalSignOut(&cognitoidentityprovider.GlobalSignOutInput{
+		AccessToken: *s.AccessToken,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
