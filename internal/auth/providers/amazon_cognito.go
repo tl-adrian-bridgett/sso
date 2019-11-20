@@ -12,27 +12,38 @@ import (
 	"time"
 
 	"github.com/buzzfeed/sso/internal/auth/circuit"
+	"github.com/buzzfeed/sso/internal/pkg/groups"
 	log "github.com/buzzfeed/sso/internal/pkg/logging"
 	"github.com/buzzfeed/sso/internal/pkg/sessions"
 	"github.com/datadog/datadog-go/statsd"
 	"golang.org/x/xerrors"
-
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 )
 
 // AmazonCognitoProvider is an implementation of the Provider interface.
 type AmazonCognitoProvider struct {
 	*ProviderData
 	StatsdClient *statsd.Client
+	AdminService CognitoAdminProvider
 	cb           *circuit.Breaker
-	cip          *cognitoidentityprovider.CognitoIdentityProvider
+	GroupsCache  groups.MemberSetCache
 }
 
 // NewAmazonCognitoProvider returns a new AmazonCognitoProvider and sets the provider url endpoints.
-func NewAmazonCognitoProvider(p *ProviderData, OrgURL string) (*AmazonCognitoProvider, error) {
+func NewAmazonCognitoProvider(p *ProviderData, OrgURL, Region, UserPoolID, Id, Secret string) (*AmazonCognitoProvider, error) {
 	if OrgURL == "" {
 		return nil, errors.New("missing setting: amazon_cognito_url")
+	}
+	if Region == "" {
+		return nil, errors.New("missing setting: amazon_cognito_region")
+	}
+	if UserPoolID == "" {
+		return nil, errors.New("missing setting: amazon_cognito_user_pool_id")
+	}
+	if Id == "" {
+		return nil, errors.New("missing setting: amazon_cognito_credentials_id")
+	}
+	if Secret == "" {
+		return nil, errors.New("missing setting: amazon_cognito_credentials_secret")
 	}
 
 	p.ProviderName = "AmazonCognito"
@@ -44,7 +55,6 @@ func NewAmazonCognitoProvider(p *ProviderData, OrgURL string) (*AmazonCognitoPro
 		Host:   OrgURL,
 		Path:   "/oauth2/authorize",
 	}
-
 	// returns access tokens, ID tokens or refresh tokens
 	p.RedeemURL = &url.URL{
 		Scheme: scheme,
@@ -75,15 +85,8 @@ func NewAmazonCognitoProvider(p *ProviderData, OrgURL string) (*AmazonCognitoPro
 		p.Scope = "openid profile email aws.cognito.signin.user.admin"
 	}
 
-	sess, err := session.NewSession()
-	if err != nil {
-		return nil, xerrors.Errorf("unable to create amazon session %w", err)
-	}
-	cip := cognitoidentityprovider.New(sess)
-
 	amazonCognitoProvider := &AmazonCognitoProvider{
 		ProviderData: p,
-		cip:          cip,
 	}
 
 	amazonCognitoProvider.cb = circuit.NewBreaker(&circuit.Options{
@@ -96,6 +99,17 @@ func NewAmazonCognitoProvider(p *ProviderData, OrgURL string) (*AmazonCognitoPro
 			time.Duration(200)*time.Second, time.Duration(500)*time.Millisecond,
 		),
 	})
+
+	cip, err := getCognitoIdentityProvider(Id, Secret, Region)
+	if err != nil {
+		return nil, xerrors.Errorf("unable to create amazon session %w", err)
+	}
+
+	amazonCognitoProvider.AdminService = &CognitoAdminService{
+		adminService: cip,
+		cb:           amazonCognitoProvider.cb,
+		userPoolID:   &UserPoolID,
+	}
 
 	return amazonCognitoProvider, nil
 }
@@ -193,7 +207,7 @@ func (p *AmazonCognitoProvider) amazonCognitoRequest(method, endpoint string, pa
 	if resp.StatusCode != http.StatusOK {
 		p.StatsdClient.Incr("provider.error", tags, 1.0)
 		logger.WithHTTPStatus(resp.StatusCode).WithEndpoint(stripToken(endpoint)).WithResponseBody(
-			respBody).Info()
+			respBody).Error("non-200 response code returned from request to Cognito")
 		switch resp.StatusCode {
 		case 400:
 			var response struct {
@@ -212,7 +226,6 @@ func (p *AmazonCognitoProvider) amazonCognitoRequest(method, endpoint string, pa
 			return ErrServiceUnavailable
 		}
 	}
-
 	if response != nil {
 		err := json.Unmarshal(respBody, &response)
 		if err != nil {
@@ -312,12 +325,77 @@ func (p *AmazonCognitoProvider) verifyEmailWithAccessToken(accessToken string) (
 	return userinfo.EmailAddress, nil
 }
 
+func (p *AmazonCognitoProvider) PopulateMembers(group string) (groups.MemberSet, error) {
+	members, err := p.AdminService.ListCognitoMemberships(group)
+	if err != nil {
+		return nil, err
+	}
+
+	memberSet := map[string]struct{}{}
+	for _, member := range members {
+		memberSet[member] = struct{}{}
+	}
+	return memberSet, nil
+}
+
 // ValidateGroupMembership takes in an email, a list of allowed groups an access token
 // - compares allowed groups to users' groups.
 // Conditionally returns an empty (nil) slice or a slice of the matching groups.
 func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGroups []string, accessToken string) ([]string, error) {
-	// TODO: This is currently non-functioning
-	return allowedGroups, nil
+	logger := log.NewLogEntry()
+
+	userInfo, err := p.AdminService.GetUserInfo(&accessToken)
+	if err != nil {
+		return []string{}, err
+	}
+
+	if userInfo.Username == nil {
+		//TODO: return a better error
+		return []string{}, ErrBadRequest
+	}
+	userName := userInfo.Username
+
+	// if an empty listed of allowed groups is passed in, we return an empty list.
+	if len(allowedGroups) == 0 {
+		return []string{}, nil
+	}
+
+	matchingGroups := []string{}
+	var useGroupsResource bool
+	// iterate over the groups. if the group isn't already cached then trigger a refresh loop for that group.
+	for _, group := range allowedGroups {
+		memberSet, ok := p.GroupsCache.Get(group)
+		if !ok {
+			useGroupsResource = true
+			if started := p.GroupsCache.RefreshLoop(group); started {
+				logger.WithUserGroup(group).Info(
+					"no member set cached for group; refresh loop started")
+				p.StatsdClient.Incr("cache_refresh_loop", []string{"action:profile", fmt.Sprintf("group:%s", group)}, 1.0)
+			}
+		}
+		//email either needs to be the username, or we need to save find the email from the username, to use in the cache instead.
+		if _, exists := memberSet[*userName]; exists {
+			matchingGroups = append(matchingGroups, group)
+		}
+	}
+	// if the membership for this group is not cached, get all the groups the user is a member of and filter out ones that are in `allowedGroups`
+	if useGroupsResource {
+		groupMembership, err := p.AdminService.CheckMemberships(*userName)
+		if err != nil {
+			return []string{}, err
+		}
+
+		for _, allowedGroup := range allowedGroups {
+			for _, group := range groupMembership {
+				if allowedGroup == group {
+					matchingGroups = append(matchingGroups, group)
+					break
+				}
+			}
+		}
+	}
+
+	return matchingGroups, nil
 }
 
 // GetUserProfile takes in an access token and sends a request to the /userinfo endpoint.
@@ -384,10 +462,8 @@ func (p *AmazonCognitoProvider) RefreshAccessToken(refreshToken string) (token s
 
 // Revoke revokes the refresh token from a given session state.
 // For the Amazon Cognito provider this triggers a global sign out for this user on all devices
-func (p *AmazonCognitoProvider) Revoke(s *sessions.SessionState) error {
-	_, err := p.cip.GlobalSignOut(&cognitoidentityprovider.GlobalSignOutInput{
-		AccessToken: &s.AccessToken,
-	})
+func (p *AmazonCognitoProvider) Revoke(session *sessions.SessionState) error {
+	err := p.AdminService.GlobalSignOut(session)
 	if err != nil {
 		return err
 	}

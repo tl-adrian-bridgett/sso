@@ -44,6 +44,10 @@ import (
 // PROVIDER_*_OKTA_SERVER
 //
 // PROVIDER_*_COGNITO_URL
+// PROVIDER_*_COGNITO_REGION
+// PROVIDER_*_COGNITO_ID
+// PROVIDER_*_COGNITO_CREDENTIALS_ID
+// PROVIDER_*_COGNITO_CREDENTIALS_SECRET
 //
 // PROVIDER_*_GROUPCACHE_INTERVAL_REFRESH
 // PROVIDER_*_GROUPCACHE_INTERVAL_PROVIDER
@@ -285,12 +289,44 @@ func (opc OktaProviderConfig) Validate() error {
 }
 
 type AmazonCognitoProviderConfig struct {
-	OrgURL string `mapstructure:"url"`
+	OrgURL      string             `mapstructure:"url"`
+	UserPoolID  string             `mapstructure:"id"`
+	Region      string             `mapstructure:"region"`
+	Credentials CognitoCredentials `mapstructure:"credentials"`
 }
 
 func (acpc AmazonCognitoProviderConfig) Validate() error {
 	if acpc.OrgURL == "" {
 		return xerrors.New("no cognito.url is configured")
+	}
+
+	if acpc.UserPoolID == "" {
+		return xerrors.New("no cognito.userPoolId is configured")
+	}
+
+	if acpc.Region == "" {
+		return xerrors.New("no cognito.region is configured")
+	}
+
+	if err := acpc.Credentials.Validate(); err != nil {
+		return xerrors.Errorf("invalid cognoto.credentials config: %w", err)
+	}
+
+	return nil
+}
+
+type CognitoCredentials struct {
+	ID     string `mapstructure:"id"`
+	Secret string `mapstructure:"secret"`
+}
+
+func (cc CognitoCredentials) Validate() error {
+	if cc.ID == "" {
+		return xerrors.New("no cognito.id is configured")
+	}
+
+	if cc.Secret == "" {
+		return xerrors.New("no cognito.secret is configured")
 	}
 
 	return nil
