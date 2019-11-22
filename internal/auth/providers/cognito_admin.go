@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 	"github.com/buzzfeed/sso/internal/auth/circuit"
+	log "github.com/buzzfeed/sso/internal/pkg/logging"
 	"github.com/buzzfeed/sso/internal/pkg/sessions"
 	"github.com/datadog/datadog-go/statsd"
 )
@@ -29,6 +30,7 @@ type CognitoAdminService struct {
 }
 
 func getCognitoIdentityProvider(id, secret, region string) (*cognitoidentityprovider.CognitoIdentityProvider, error) {
+	logger := log.NewLogEntry()
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(region),
 		Credentials: credentials.NewStaticCredentials(

@@ -2,13 +2,16 @@ package providers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/buzzfeed/sso/internal/pkg/groups"
 	"github.com/buzzfeed/sso/internal/pkg/sessions"
 	"github.com/buzzfeed/sso/internal/pkg/testutil"
 )
@@ -34,7 +37,14 @@ func newAmazonCognitoProvider(providerData *ProviderData, t *testing.T) *AmazonC
 			ValidateURL:  &url.URL{},
 			Scope:        ""}
 	}
-	provider, err := NewAmazonCognitoProvider(providerData, "test.amazonCognito.com")
+	provider, err := NewAmazonCognitoProvider(
+		providerData,
+		"test.amazonCognito.com",
+		"cognito_region",
+		"cognito_pool_id",
+		"aws_credentials_id",
+		"aws_credentials_secret",
+	)
 	if err != nil {
 		t.Fatalf("new amazonCognito provider returns unexpected error: %q", err)
 	}
@@ -263,5 +273,162 @@ func TestAmazonCognitoProviderRevoke(t *testing.T) {
 			}
 		})
 
+	}
+}
+
+func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
+	testCases := []struct {
+		name                  string
+		inputAllowedGroups    []string
+		groupsError           error
+		checkMembershipGroups []string
+		listMembershipsFunc   func(string) (groups.MemberSet, bool)
+		expectedGroups        []string
+		expectedErrorString   string
+	}{
+		{
+			name:                "empty input groups should return an empty string",
+			inputAllowedGroups:  []string{},
+			expectedGroups:      []string{""},
+			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return nil, false },
+		},
+		{
+			name:                "member exists in cache, should not call check membership resource",
+			inputAllowedGroups:  []string{"group1"},
+			groupsError:         fmt.Errorf("should not get here"),
+			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{"email": {}}, true },
+			expectedGroups:      []string{"group1"},
+		},
+		{
+			name:                "member does not exist in cache, should still not call check membership resource",
+			inputAllowedGroups:  []string{"group1"},
+			groupsError:         fmt.Errorf("should not get here"),
+			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{}, true },
+			expectedGroups:      []string{},
+		},
+		{
+			name:                  "subset of groups are not cached, calls check membership resource",
+			inputAllowedGroups:    []string{"group1", "group2"},
+			groupsError:           nil,
+			checkMembershipGroups: []string{"group1"},
+			listMembershipsFunc: func(group string) (groups.MemberSet, bool) {
+				switch group {
+				case "group1":
+					return groups.MemberSet{"email": {}}, true
+				default:
+					return groups.MemberSet{}, false
+				}
+			},
+			expectedGroups: []string{"group1"},
+		},
+		{
+			name:               "subset of groups are not cached, calls check membership resource with error",
+			inputAllowedGroups: []string{"group1", "group2"},
+			groupsError:        fmt.Errorf("error"),
+			listMembershipsFunc: func(group string) (groups.MemberSet, bool) {
+				switch group {
+				case "group1":
+					return groups.MemberSet{"email": {}}, true
+				default:
+					return groups.MemberSet{}, false
+				}
+			},
+			expectedErrorString: "error",
+		},
+		{
+			name:               "subset of groups not there, does not call check membership resource",
+			inputAllowedGroups: []string{"group1", "group2"},
+			groupsError:        fmt.Errorf("should not get here"),
+			listMembershipsFunc: func(group string) (groups.MemberSet, bool) {
+				switch group {
+				case "group1":
+					return groups.MemberSet{"email": {}}, true
+				default:
+					return groups.MemberSet{}, true
+				}
+			},
+			expectedGroups: []string{"group1"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := GoogleProvider{
+				AdminService: &MockAdminService{Groups: tc.checkMembershipGroups, GroupsError: tc.groupsError},
+				GroupsCache:  &groups.MockCache{ListMembershipsFunc: tc.listMembershipsFunc, Refreshed: true},
+			}
+
+			groups, err := p.ValidateGroupMembership("email", tc.inputAllowedGroups, "accessToken")
+
+			if err != nil {
+				if tc.expectedErrorString != err.Error() {
+					t.Errorf("expected error %s but err was %s", tc.expectedErrorString, err)
+				}
+			}
+			if !reflect.DeepEqual(tc.expectedGroups, groups) {
+				t.Logf("expected groups %v", tc.expectedGroups)
+				t.Logf("got groups %v", groups)
+				t.Errorf("unexpected groups returned")
+			}
+
+		})
+	}
+}
+
+type cognitoProviderValidateSessionResponse struct {
+	Active bool `json:"active"`
+}
+
+func TestAmazonCognitoProviderValidateSession(t *testing.T) {
+	testCases := []struct {
+		name          string
+		resp          cognitoProviderValidateSessionResponse
+		expectedError bool
+		sessionState  *sessions.SessionState
+	}{
+		{
+			name: "valid session state",
+			resp: cognitoProviderValidateSessionResponse{
+				Active: true,
+			},
+			sessionState: &sessions.SessionState{
+				AccessToken: "a1234",
+			},
+			expectedError: false,
+		},
+		{
+			name: "invalid session state",
+			resp: cognitoProviderValidateSessionResponse{
+				Active: false,
+			},
+			sessionState: &sessions.SessionState{
+				AccessToken: "a1234",
+			},
+			expectedError: true,
+		},
+		{
+			name:          "missing access token",
+			sessionState:  &sessions.SessionState{},
+			expectedError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newOktaProvider(nil, t)
+			body, err := json.Marshal(tc.resp)
+			testutil.Equal(t, nil, err)
+			var server *httptest.Server
+			p.ValidateURL, server = newOktaProviderServer(body, http.StatusOK)
+			defer server.Close()
+
+			resp := p.ValidateSessionState(tc.sessionState)
+			if tc.expectedError && resp {
+				t.Errorf("expected false but returned as true")
+			}
+			if !tc.expectedError && !resp {
+				t.Errorf("expected true but returned as false")
+			}
+		})
 	}
 }
