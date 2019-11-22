@@ -287,9 +287,9 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 		expectedErrorString   string
 	}{
 		{
-			name:                "empty input groups should return an empty string",
+			name:                "empty input groups should return an empty string slice",
 			inputAllowedGroups:  []string{},
-			expectedGroups:      []string{""},
+			expectedGroups:      []string{},
 			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return nil, false },
 		},
 		{
