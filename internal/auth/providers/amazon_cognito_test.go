@@ -129,6 +129,27 @@ type amazonCognitoProviderRedeemResponse struct {
 	ExpiresIn     int64  `json:"expires_in"`
 }
 
+func TestAmazonCognitoGetSignInURL(t *testing.T) {
+	providerData := &ProviderData{
+		ProviderName: "",
+		ClientID:     "testClientID",
+		ClientSecret: "",
+		SignInURL:    &url.URL{},
+		RedeemURL:    &url.URL{},
+		RevokeURL:    &url.URL{},
+		ProfileURL:   &url.URL{},
+		ValidateURL:  &url.URL{},
+		Scope:        "testScope",
+	}
+	p := newAmazonCognitoProvider(providerData, t)
+
+	signInURL := p.GetSignInURL("https://test.redirectui.com", "testState")
+
+	testutil.Equal(t,
+		signInURL,
+		"https://test.amazonCognito.com/oauth2/authorize?client_id=testClientID&identity_provider=COGNITO&redirect_uri=https%3A%2F%2Ftest.redirectui.com&response_type=code&scope=testScope&state=testState")
+}
+
 func TestAmazonCognitoProviderRedeem(t *testing.T) {
 	testCases := []struct {
 		name            string
@@ -197,6 +218,74 @@ func TestAmazonCognitoProviderRedeem(t *testing.T) {
 					t.Logf("expected refresh token %q", tc.expectedSession.RefreshToken)
 					t.Logf("                   got %q", session.RefreshToken)
 					t.Errorf("unexpected session refresh token")
+				}
+			}
+		})
+	}
+}
+
+type amazonCognitoRefreshResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int64  `json:"expires_in"`
+}
+
+func TestAmazonCognitoRefreshSessionIfNeeded(t *testing.T) {
+
+	testCases := []struct {
+		name              string
+		expectedRefreshed bool
+		resp              amazonCognitoRefreshResponse
+		httpStatus        int
+		sessionState      *sessions.SessionState
+	}{
+		{
+			name: "session should not be refreshed",
+			sessionState: &sessions.SessionState{
+				RefreshDeadline: time.Now().Add(time.Second * 10),
+				RefreshToken:    "refresh12345",
+			},
+			expectedRefreshed: false,
+		},
+		{
+			name: "session should be refreshed due to RefreshDeadline expiry",
+			sessionState: &sessions.SessionState{
+				RefreshDeadline: time.Now().Add(-time.Second * 10),
+				RefreshToken:    "refresh1234",
+			},
+			expectedRefreshed: true,
+			resp: amazonCognitoRefreshResponse{
+				AccessToken: "refresh6789",
+				ExpiresIn:   10,
+			},
+			httpStatus: http.StatusOK,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newAmazonCognitoProvider(nil, t)
+			body, err := json.Marshal(tc.resp)
+			testutil.Equal(t, nil, err)
+			var server *httptest.Server
+			p.RedeemURL, server = newAmazonCognitoProviderServer(body, tc.httpStatus)
+			defer server.Close()
+
+			refreshed, err := p.RefreshSessionIfNeeded(tc.sessionState)
+			if err != nil {
+				t.Fatalf("unexpected error returned")
+			}
+
+			if refreshed != tc.expectedRefreshed {
+				t.Logf("expected bool: %t", tc.expectedRefreshed)
+				t.Logf("Got          : %t", refreshed)
+				t.Fatalf("unexpected return value")
+			}
+
+			if tc.expectedRefreshed {
+				if tc.sessionState.AccessToken != tc.resp.AccessToken {
+					t.Logf("expected new session access token to equal: %q", tc.resp.AccessToken)
+					t.Logf("new session access token equals           : %q", tc.sessionState.AccessToken)
+					t.Fatalf("unxpected new session access token returned")
 				}
 			}
 		})
