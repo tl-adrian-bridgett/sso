@@ -326,7 +326,7 @@ func (p *AmazonCognitoProvider) verifyEmailWithAccessToken(accessToken string) (
 }
 
 func (p *AmazonCognitoProvider) PopulateMembers(group string) (groups.MemberSet, error) {
-	members, err := p.AdminService.ListCognitoMemberships(group)
+	members, err := p.AdminService.ListMemberships(group)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,6 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 	if err != nil {
 		return []string{}, err
 	}
-
 	if userInfo.Username == nil {
 		//TODO: return a better error
 		return []string{}, ErrBadRequest
@@ -382,7 +381,7 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 	if useGroupsResource {
 		groupMembership, err := p.AdminService.CheckMemberships(*userName)
 		if err != nil {
-			return []string{}, err
+			return nil, err
 		}
 
 		for _, allowedGroup := range allowedGroups {
