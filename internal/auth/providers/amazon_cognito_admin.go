@@ -16,7 +16,7 @@ import (
 )
 
 type CognitoAdminProvider interface {
-	ListCognitoMemberships(groupName string) (members []string, err error)
+	ListMemberships(groupName string) (members []string, err error)
 	CheckMemberships(userName string) (inGroups []string, err error)
 	GlobalSignOut(session *sessions.SessionState) (err error)
 	GetUserInfo(accessToken *string) (userInfo *cognitoidentityprovider.GetUserOutput, err error)
@@ -98,7 +98,7 @@ func (cas *CognitoAdminService) GetUserInfo(accessToken *string) (*cognitoidenti
 
 }
 
-func (cas *CognitoAdminService) ListCognitoMemberships(groupName string) ([]string, error) {
+func (cas *CognitoAdminService) ListMemberships(groupName string) ([]string, error) {
 	var groupMembers []string
 	tags := []string{
 		"provider:cognito",
