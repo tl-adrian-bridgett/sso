@@ -385,7 +385,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 			name:                "member exists in cache, should not call check membership resource",
 			inputAllowedGroups:  []string{"group1"},
 			groupsError:         fmt.Errorf("should not get here"),
-			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{"email": {}}, true },
+			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{"username": {}}, true },
 			expectedGroups:      []string{"group1"},
 		},
 		{
@@ -417,7 +417,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 			listMembershipsFunc: func(group string) (groups.MemberSet, bool) {
 				switch group {
 				case "group1":
-					return groups.MemberSet{"email": {}}, true
+					return groups.MemberSet{"username": {}}, true
 				default:
 					return groups.MemberSet{}, false
 				}
@@ -431,7 +431,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 			listMembershipsFunc: func(group string) (groups.MemberSet, bool) {
 				switch group {
 				case "group1":
-					return groups.MemberSet{"email": {}}, true
+					return groups.MemberSet{"username": {}}, true
 				default:
 					return groups.MemberSet{}, true
 				}
@@ -442,12 +442,12 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := GoogleProvider{
-				AdminService: &MockAdminService{Groups: tc.checkMembershipGroups, GroupsError: tc.groupsError},
+			p := AmazonCognitoProvider{
+				AdminService: &MockCognitoAdminService{Groups: tc.checkMembershipGroups, GroupsError: tc.groupsError, UserName: "username"},
 				GroupsCache:  &groups.MockCache{ListMembershipsFunc: tc.listMembershipsFunc, Refreshed: true},
 			}
 
-			groups, err := p.ValidateGroupMembership("email", tc.inputAllowedGroups, "accessToken")
+			groups, err := p.ValidateGroupMembership("username", tc.inputAllowedGroups, "accessToken")
 
 			if err != nil {
 				if tc.expectedErrorString != err.Error() {
