@@ -372,7 +372,6 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 				p.StatsdClient.Incr("cache_refresh_loop", []string{"action:profile", fmt.Sprintf("group:%s", group)}, 1.0)
 			}
 		}
-		//email either needs to be the username, or we need to save find the email from the username, to use in the cache instead.
 		if _, exists := memberSet[*userName]; exists {
 			matchingGroups = append(matchingGroups, group)
 		}

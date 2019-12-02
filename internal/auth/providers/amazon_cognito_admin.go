@@ -105,7 +105,6 @@ func (cas *CognitoAdminService) ListMemberships(groupName string) ([]string, err
 		"action:list_members_resource",
 		fmt.Sprintf("group:%s", groupName),
 	}
-	//TODO: wonder if we can create a function that hosues some of this, much like the cognitoRequest provider method
 	nextToken := ""
 	for {
 		reqParams := &cognitoidentityprovider.ListUsersInGroupInput{
@@ -114,18 +113,14 @@ func (cas *CognitoAdminService) ListMemberships(groupName string) ([]string, err
 		}
 
 		startTS := time.Now()
-		//TODO: we could use ListUsersInGroupPages, but not sure how well that would work with the circuit breaker,
-		// we also don't necessarily gain much
 		req, resp := cas.adminService.ListUsersInGroupRequest(reqParams)
 		if nextToken != "" {
 			reqParams.SetNextToken(nextToken)
 		}
 		cas.StatsdClient.Incr("provider.request", tags, 1.0)
-		//TODO: double check
 		_, err := cas.cb.Call(func() (interface{}, error) {
 			return nil, req.Send()
 		})
-		//TODO: are we checking this the right way (considering the use of req.Send)?
 		if err != nil {
 			switch e := err.(type) {
 			case awserr.Error:
