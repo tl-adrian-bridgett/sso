@@ -19,7 +19,7 @@ type CognitoAdminProvider interface {
 	ListMemberships(groupName string) (members []string, err error)
 	CheckMemberships(userName string) (inGroups []string, err error)
 	GlobalSignOut(session *sessions.SessionState) (err error)
-	GetUserInfo(accessToken *string) (userInfo *cognitoidentityprovider.GetUserOutput, err error)
+	GetUserInfo(accessToken string) (userInfo *cognitoidentityprovider.GetUserOutput, err error)
 }
 
 type CognitoAdminService struct {
@@ -48,17 +48,17 @@ func getCognitoIdentityProvider(id, secret, region string) (*cognitoidentityprov
 }
 
 //TODO: we could potentially remove this in favour of the GetUserInfo cognito provider method
-func (cas *CognitoAdminService) GetUserInfo(accessToken *string) (*cognitoidentityprovider.GetUserOutput, error) {
+func (cas *CognitoAdminService) GetUserInfo(accessToken string) (*cognitoidentityprovider.GetUserOutput, error) {
 	tags := []string{
 		"provider:cognito",
 		"action:get_user_info",
 	}
 
-	if accessToken == nil {
+	if accessToken == "" {
 		return nil, ErrBadRequest
 	}
 	reqParams := &cognitoidentityprovider.GetUserInput{
-		AccessToken: accessToken,
+		AccessToken: &accessToken,
 	}
 
 	startTS := time.Now()

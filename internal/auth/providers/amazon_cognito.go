@@ -264,8 +264,6 @@ func (p *AmazonCognitoProvider) cbStateChange(from, to circuit.State) {
 //     - a Base64 encoded id token which contains the user's email
 //       address and whether or not that email address is verified
 func (p *AmazonCognitoProvider) Redeem(redirectURL, code string) (*sessions.SessionState, error) {
-	logger := log.NewLogEntry()
-
 	if code == "" {
 		return nil, ErrBadRequest
 	}
@@ -287,8 +285,6 @@ func (p *AmazonCognitoProvider) Redeem(redirectURL, code string) (*sessions.Sess
 	if err != nil {
 		return nil, err
 	}
-
-	logger.Info(fmt.Sprintf("response %#v", response))
 
 	email, err := p.verifyEmailWithAccessToken(response.AccessToken)
 	if err != nil {
@@ -344,7 +340,9 @@ func (p *AmazonCognitoProvider) PopulateMembers(group string) (groups.MemberSet,
 func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGroups []string, accessToken string) ([]string, error) {
 	logger := log.NewLogEntry()
 
-	userInfo, err := p.AdminService.GetUserInfo(&accessToken)
+	// cognito tends to work with usernames instead of email addresses,
+	// so we find the users username and use that while reasoning about their group membership
+	userInfo, err := p.AdminService.GetUserInfo(accessToken)
 	if err != nil {
 		return []string{}, err
 	}
@@ -354,7 +352,7 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 	}
 	userName := userInfo.Username
 
-	// if an empty listed of allowed groups is passed in, we return an empty list.
+	// if an empty list of allowed groups is passed in, we return an empty list.
 	if len(allowedGroups) == 0 {
 		return []string{}, nil
 	}
@@ -376,7 +374,8 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 			matchingGroups = append(matchingGroups, group)
 		}
 	}
-	// if the membership for this group is not cached, get all the groups the user is a member of and filter out ones that are in `allowedGroups`
+	// if the membership for this group is not cached, get all the groups the user is a member of and
+	// filter out ones that are in `allowedGroups`
 	if useGroupsResource {
 		groupMembership, err := p.AdminService.CheckMemberships(*userName)
 		if err != nil {
