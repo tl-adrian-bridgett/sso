@@ -26,7 +26,7 @@ func (ms *MockCognitoAdminService) CheckMemberships(string) ([]string, error) {
 	return ms.Groups, ms.GroupsError
 }
 
-func (ms *MockCognitoAdminService) GetUserInfo(*string) (*cognitoidentityprovider.GetUserOutput, error) {
+func (ms *MockCognitoAdminService) GetUserInfo(string) (*cognitoidentityprovider.GetUserOutput, error) {
 	userInfo := &cognitoidentityprovider.GetUserOutput{
 		Username: &ms.UserName}
 	return userInfo, ms.UserInfoError
