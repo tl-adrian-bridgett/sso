@@ -7,7 +7,6 @@ require (
 	github.com/datadog/datadog-go v0.0.0-20180822151419-281ae9f2d895
 	github.com/gorilla/websocket v1.4.0
 	github.com/imdario/mergo v0.3.7
-	github.com/kelseyhightower/envconfig v1.3.0
 	github.com/mccutchen/go-httpbin v1.1.1
 	github.com/micro/go-micro v1.5.0
 	github.com/miscreant/miscreant-go v0.0.0-20181010193435-325cbd69228b
