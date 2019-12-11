@@ -99,7 +99,7 @@ type OptionsConfig struct {
 	AllowedEmailDomains   []string          `yaml:"allowed_email_domains"`
 	AllowedEmailAddresses []string          `yaml:"allowed_email_addresses"`
 	TLSSkipVerify         bool              `yaml:"tls_skip_verify"`
-	SkipPreAuthFlight     bool              `yaml:"skip_preauth_flight"`
+	SkipAuthPreflight     bool              `yaml:"skip_auth_preflight"`
 	PassAccessToken       bool              `yaml:"pass_access_token"`
 	PreserveHost          bool              `yaml:"preserve_host"`
 	Timeout               time.Duration     `yaml:"timeout"`
