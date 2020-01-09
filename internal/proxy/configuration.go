@@ -97,6 +97,12 @@ func DefaultProxyConfig() Configuration {
 			Enable: true,
 			Level:  "INFO",
 		},
+		MetricsConfig: MetricsConfig{
+			StatsdConfig: StatsdConfig{
+				Port: 8125,
+				Host: "localhost",
+			},
+		},
 	}
 }
 

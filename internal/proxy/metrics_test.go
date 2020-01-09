@@ -49,12 +49,8 @@ func TestNewStatsd(t *testing.T) {
 				t.Fatalf("error %s", err.Error())
 			}
 			defer pc.Close()
-			opts := NewOptions()
-			opts.StatsdHost = tc.host
-			opts.StatsdPort = tc.port
-			opts.Validate()
 
-			client, err := newStatsdClient(opts)
+			client, err := NewStatsdClient(tc.host, tc.port)
 			if err != nil {
 				t.Fatalf("error starting new statsd client: %s", err.Error())
 			}

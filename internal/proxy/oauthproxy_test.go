@@ -45,13 +45,6 @@ func setSessionStore(s sessions.SessionStore) func(*OAuthProxy) error {
 	}
 }
 
-func setSkipAuthPreflight(skip bool) func(*OAuthProxy) error {
-	return func(p *OAuthProxy) error {
-		p.skipAuthPreflight = skip
-		return nil
-	}
-}
-
 // setCookieCipher is specifically for testing marshaling outside of the cookie store
 func setCookieCipher(a aead.Cipher) func(*OAuthProxy) error {
 	return func(p *OAuthProxy) error {
@@ -95,7 +88,7 @@ func testHTTPBin(t *testing.T) (*url.URL, func()) {
 func testNewOAuthProxy(t *testing.T, optFuncs ...func(*OAuthProxy) error) (*OAuthProxy, func()) {
 	backendURL, close := testHTTPBin(t)
 
-	opts := NewOptions()
+	config := DefaultProxyConfig()
 	providerURL, _ := url.Parse("http://localhost/")
 	provider := providers.NewTestProvider(providerURL, "")
 
@@ -140,7 +133,7 @@ func testNewOAuthProxy(t *testing.T, optFuncs ...func(*OAuthProxy) error) (*OAut
 
 	standardOptFuncs = append(standardOptFuncs, optFuncs...)
 
-	proxy, err := NewOAuthProxy(opts, standardOptFuncs...)
+	proxy, err := NewOAuthProxy(&config.SessionConfig, standardOptFuncs...)
 	testutil.Assert(t, err == nil, "could not create upstream reverse proxy: %v", err)
 
 	if requestSigner == nil {
@@ -311,10 +304,10 @@ func TestSkipAuthRequest(t *testing.T) {
 				SkipAuthCompiledRegex: []*regexp.Regexp{
 					regexp.MustCompile(`^\/allow$`),
 				},
+				SkipAuthPreflight: true,
 			}
 
 			proxy, close := testNewOAuthProxy(t,
-				setSkipAuthPreflight(true),
 				SetProxyHandler(backend),
 				SetUpstreamConfig(config),
 				setSessionStore(&sessions.MockSessionStore{LoadError: http.ErrNoCookie}),
