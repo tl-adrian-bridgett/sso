@@ -26,7 +26,7 @@ func TestPingHandler(t *testing.T) {
 		config.MetricsConfig.StatsdConfig.Host,
 		config.MetricsConfig.StatsdConfig.Port)
 	if err != nil {
-		t.Fatalf("unexpected error creating statsd client: %v")
+		t.Fatalf("unexpected error creating statsd client: %v", err)
 	}
 
 	sso, err := New(config, statsdClient)
