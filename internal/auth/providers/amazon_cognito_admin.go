@@ -19,7 +19,6 @@ type CognitoAdminProvider interface {
 	ListMemberships(groupName string) (members []string, err error)
 	CheckMemberships(userName string) (inGroups []string, err error)
 	GlobalSignOut(session *sessions.SessionState) (err error)
-	GetUserInfo(accessToken string) (userInfo *cognitoidentityprovider.GetUserOutput, err error)
 }
 
 type CognitoAdminService struct {
@@ -45,57 +44,6 @@ func getCognitoIdentityProvider(id, secret, region string) (*cognitoidentityprov
 	idp := cognitoidentityprovider.New(sess)
 
 	return idp, nil
-}
-
-//TODO: we could potentially remove this in favour of the GetUserInfo cognito provider method
-func (cas *CognitoAdminService) GetUserInfo(accessToken string) (*cognitoidentityprovider.GetUserOutput, error) {
-	tags := []string{
-		"provider:cognito",
-		"action:get_user_info",
-	}
-
-	if accessToken == "" {
-		return nil, ErrBadRequest
-	}
-	reqParams := &cognitoidentityprovider.GetUserInput{
-		AccessToken: &accessToken,
-	}
-
-	startTS := time.Now()
-	req, userInfo := cas.adminService.GetUserRequest(reqParams)
-
-	_, err := cas.cb.Call(func() (interface{}, error) {
-		return nil, req.Send()
-	})
-	if err != nil {
-		switch e := err.(type) {
-		case awserr.Error:
-			tags = append(tags, fmt.Sprintf("status_code:%d", req.HTTPResponse.StatusCode))
-			cas.StatsdClient.Incr("provider.response", tags, 1.0)
-			cas.StatsdClient.Incr("provider.error", tags, 1.0)
-			switch e.Code() {
-			case cognitoidentityprovider.ErrCodeTooManyRequestsException:
-				err = ErrRateLimitExceeded
-			case cognitoidentityprovider.ErrCodeInternalErrorException:
-				err = ErrServiceUnavailable
-			case cognitoidentityprovider.ErrCodeNotAuthorizedException:
-			}
-		case *circuit.ErrOpenState:
-			tags = append(tags, "error:circuit_open")
-			cas.StatsdClient.Incr("provider.error", tags, 1.0)
-		default:
-			tags = append(tags, "error:invalid_response")
-			cas.StatsdClient.Incr("provider.internal_error", tags, 1.0)
-		}
-		return nil, err
-	}
-
-	tags = append(tags, fmt.Sprintf("status_code:%d", req.HTTPResponse.StatusCode))
-	cas.StatsdClient.Timing("provider.latency", time.Now().Sub(startTS), tags, 1.0)
-	cas.StatsdClient.Incr("provider.response", tags, 1.0)
-
-	return userInfo, nil
-
 }
 
 func (cas *CognitoAdminService) ListMemberships(groupName string) ([]string, error) {

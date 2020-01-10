@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 	"github.com/buzzfeed/sso/internal/pkg/sessions"
 )
 
@@ -26,12 +25,7 @@ func (ms *MockCognitoAdminService) CheckMemberships(string) ([]string, error) {
 	return ms.Groups, ms.GroupsError
 }
 
-func (ms *MockCognitoAdminService) GetUserInfo(string) (*cognitoidentityprovider.GetUserOutput, error) {
-	userInfo := &cognitoidentityprovider.GetUserOutput{
-		Username: &ms.UserName}
-	return userInfo, ms.UserInfoError
-}
-
+// GlobalSignOut mocks the GlobalSignOut function
 func (ms *MockCognitoAdminService) GlobalSignOut(*sessions.SessionState) error {
 	return ms.GlobalSignOutError
 }

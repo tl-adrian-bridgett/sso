@@ -28,6 +28,11 @@ type AmazonCognitoProvider struct {
 	GroupsCache  groups.MemberSetCache
 }
 
+type GetCognitoUserProfileResponse struct {
+	EmailAddress string `json:"email"`
+	Username     string `json:"username"`
+}
+
 // NewAmazonCognitoProvider returns a new AmazonCognitoProvider and sets the provider url endpoints.
 func NewAmazonCognitoProvider(p *ProviderData, OrgURL, Region, UserPoolID, Id, Secret string) (*AmazonCognitoProvider, error) {
 	if OrgURL == "" {
@@ -309,16 +314,16 @@ func (p *AmazonCognitoProvider) verifyEmailWithAccessToken(accessToken string) (
 		return "", ErrBadRequest
 	}
 
-	userinfo, err := p.GetUserProfile(accessToken)
+	userInfo, err := p.GetUserProfile(accessToken)
 	if err != nil {
 		return "", err
 	}
 
-	if userinfo.EmailAddress == "" {
+	if userInfo.EmailAddress == "" {
 		return "", errors.New("missing email")
 	}
 
-	return userinfo.EmailAddress, nil
+	return userInfo.EmailAddress, nil
 }
 
 func (p *AmazonCognitoProvider) PopulateMembers(group string) (groups.MemberSet, error) {
@@ -342,13 +347,12 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 
 	// cognito tends to work with usernames instead of email addresses,
 	// so we find the users username and use that while reasoning about their group membership
-	userInfo, err := p.AdminService.GetUserInfo(accessToken)
+	userInfo, err := p.GetUserProfile(accessToken)
 	if err != nil {
 		return []string{}, err
 	}
-	if userInfo.Username == nil {
-		//TODO: return a better error
-		return []string{}, ErrBadRequest
+	if userInfo.Username == "" {
+		return []string{}, errors.New("missing username")
 	}
 	userName := userInfo.Username
 
@@ -370,14 +374,14 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 				p.StatsdClient.Incr("cache_refresh_loop", []string{"action:profile", fmt.Sprintf("group:%s", group)}, 1.0)
 			}
 		}
-		if _, exists := memberSet[*userName]; exists {
+		if _, exists := memberSet[userName]; exists {
 			matchingGroups = append(matchingGroups, group)
 		}
 	}
 	// if the membership for this group is not cached, get all the groups the user is a member of and
 	// filter out ones that are in `allowedGroups`
 	if useGroupsResource {
-		groupMembership, err := p.AdminService.CheckMemberships(*userName)
+		groupMembership, err := p.AdminService.CheckMemberships(userName)
 		if err != nil {
 			return nil, err
 		}
@@ -397,8 +401,8 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 
 // GetUserProfile takes in an access token and sends a request to the /userinfo endpoint.
 // Conditionally returns nil response or a struct of specified claims.
-func (p *AmazonCognitoProvider) GetUserProfile(AccessToken string) (*GetUserProfileResponse, error) {
-	response := &GetUserProfileResponse{}
+func (p *AmazonCognitoProvider) GetUserProfile(AccessToken string) (*GetCognitoUserProfileResponse, error) {
+	response := &GetCognitoUserProfileResponse{}
 
 	if AccessToken == "" {
 		return nil, ErrBadRequest
