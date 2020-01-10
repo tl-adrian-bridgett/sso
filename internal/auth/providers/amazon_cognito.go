@@ -345,6 +345,11 @@ func (p *AmazonCognitoProvider) PopulateMembers(group string) (groups.MemberSet,
 func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGroups []string, accessToken string) ([]string, error) {
 	logger := log.NewLogEntry()
 
+	// if an empty list of allowed groups is passed in, we return an empty list.
+	if len(allowedGroups) == 0 {
+		return []string{}, nil
+	}
+
 	// cognito tends to work with usernames instead of email addresses,
 	// so we find the users username and use that while reasoning about their group membership
 	userInfo, err := p.GetUserProfile(accessToken)
@@ -355,11 +360,6 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 		return []string{}, errors.New("missing username")
 	}
 	userName := userInfo.Username
-
-	// if an empty list of allowed groups is passed in, we return an empty list.
-	if len(allowedGroups) == 0 {
-		return []string{}, nil
-	}
 
 	matchingGroups := []string{}
 	var useGroupsResource bool

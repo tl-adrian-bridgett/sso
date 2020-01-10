@@ -372,6 +372,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 		groupsError           error
 		checkMembershipGroups []string
 		listMembershipsFunc   func(string) (groups.MemberSet, bool)
+		getUserProfileResp    GetCognitoUserProfileResponse
 		expectedGroups        []string
 		expectedErrorString   string
 	}{
@@ -382,18 +383,34 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return nil, false },
 		},
 		{
+			name:               "no username returned from Cognito results in error",
+			inputAllowedGroups: []string{"group1"},
+			expectedGroups:     []string{},
+			getUserProfileResp: GetCognitoUserProfileResponse{
+				Username: "",
+			},
+			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return nil, false },
+			expectedErrorString: "missing username",
+		},
+		{
 			name:                "member exists in cache, should not call check membership resource",
 			inputAllowedGroups:  []string{"group1"},
 			groupsError:         fmt.Errorf("should not get here"),
 			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{"username": {}}, true },
-			expectedGroups:      []string{"group1"},
+			getUserProfileResp: GetCognitoUserProfileResponse{
+				Username: "username",
+			},
+			expectedGroups: []string{"group1"},
 		},
 		{
 			name:                "member does not exist in cache, should still not call check membership resource",
 			inputAllowedGroups:  []string{"group1"},
 			groupsError:         fmt.Errorf("should not get here"),
 			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{}, true },
-			expectedGroups:      []string{},
+			getUserProfileResp: GetCognitoUserProfileResponse{
+				Username: "username",
+			},
+			expectedGroups: []string{},
 		},
 		{
 			name:                  "subset of groups are not cached, calls check membership resource",
@@ -407,6 +424,9 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 				default:
 					return groups.MemberSet{}, false
 				}
+			},
+			getUserProfileResp: GetCognitoUserProfileResponse{
+				Username: "username",
 			},
 			expectedGroups: []string{"group1"},
 		},
@@ -422,6 +442,9 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 					return groups.MemberSet{}, false
 				}
 			},
+			getUserProfileResp: GetCognitoUserProfileResponse{
+				Username: "username",
+			},
 			expectedErrorString: "error",
 		},
 		{
@@ -436,16 +459,25 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 					return groups.MemberSet{}, true
 				}
 			},
+			getUserProfileResp: GetCognitoUserProfileResponse{
+				Username: "username",
+			},
 			expectedGroups: []string{"group1"},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := AmazonCognitoProvider{
-				AdminService: &MockCognitoAdminService{Groups: tc.checkMembershipGroups, GroupsError: tc.groupsError, UserName: "username"},
-				GroupsCache:  &groups.MockCache{ListMembershipsFunc: tc.listMembershipsFunc, Refreshed: true},
-			}
+			p := newAmazonCognitoProvider(nil, t)
+
+			body, err := json.Marshal(tc.getUserProfileResp)
+			testutil.Equal(t, nil, err)
+
+			var server *httptest.Server
+			p.ProfileURL, server = newAmazonCognitoProviderServer(body, http.StatusOK)
+			p.AdminService = &MockCognitoAdminService{Groups: tc.checkMembershipGroups, GroupsError: tc.groupsError, UserName: "username"}
+			p.GroupsCache = &groups.MockCache{ListMembershipsFunc: tc.listMembershipsFunc, Refreshed: true}
+			defer server.Close()
 
 			groups, err := p.ValidateGroupMembership("username", tc.inputAllowedGroups, "accessToken")
 
