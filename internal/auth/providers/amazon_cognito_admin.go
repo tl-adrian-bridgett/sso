@@ -7,7 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
+	awssession "github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
 	"github.com/buzzfeed/sso/internal/auth/circuit"
 	log "github.com/buzzfeed/sso/internal/pkg/logging"
@@ -31,7 +31,7 @@ type CognitoAdminService struct {
 
 func getCognitoIdentityProvider(id, secret, region string) (*cognitoidentityprovider.CognitoIdentityProvider, error) {
 	logger := log.NewLogEntry()
-	sess, err := session.NewSession(&aws.Config{
+	sess, err := awssession.NewSession(&aws.Config{
 		Region: aws.String(region),
 		Credentials: credentials.NewStaticCredentials(
 			id,
@@ -62,7 +62,7 @@ func (cas *CognitoAdminService) GetUserInfo(accessToken string) (*cognitoidentit
 	}
 
 	startTS := time.Now()
-	req, userinfo := cas.adminService.GetUserRequest(reqParams)
+	req, userInfo := cas.adminService.GetUserRequest(reqParams)
 
 	_, err := cas.cb.Call(func() (interface{}, error) {
 		return nil, req.Send()
@@ -94,7 +94,7 @@ func (cas *CognitoAdminService) GetUserInfo(accessToken string) (*cognitoidentit
 	cas.StatsdClient.Timing("provider.latency", time.Now().Sub(startTS), tags, 1.0)
 	cas.StatsdClient.Incr("provider.response", tags, 1.0)
 
-	return userinfo, nil
+	return userInfo, nil
 
 }
 
@@ -161,7 +161,6 @@ func (cas *CognitoAdminService) ListMemberships(groupName string) ([]string, err
 }
 
 func (cas *CognitoAdminService) CheckMemberships(userName string) ([]string, error) {
-
 	tags := []string{
 		"provider:cognito",
 		"action:check_memberships_resource",
