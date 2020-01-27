@@ -28,7 +28,7 @@ type AmazonCognitoProvider struct {
 	GroupsCache  groups.MemberSetCache
 }
 
-type GetCognitoUserProfileResponse struct {
+type getCognitoUserProfileResponse struct {
 	EmailAddress string `json:"email"`
 	Username     string `json:"username"`
 }
@@ -140,7 +140,6 @@ func (p *AmazonCognitoProvider) ValidateSessionState(s *sessions.SessionState) b
 
 // GetSignInURL returns the sign in url with typical oauth parameters
 func (p *AmazonCognitoProvider) GetSignInURL(redirectURI, state string) string {
-	// https://developer.okta.com/docs/api/resources/oidc/#authorize
 	var a url.URL
 	a = *p.SignInURL
 
@@ -401,8 +400,8 @@ func (p *AmazonCognitoProvider) ValidateGroupMembership(email string, allowedGro
 
 // GetUserProfile takes in an access token and sends a request to the /userinfo endpoint.
 // Conditionally returns nil response or a struct of specified claims.
-func (p *AmazonCognitoProvider) GetUserProfile(AccessToken string) (*GetCognitoUserProfileResponse, error) {
-	response := &GetCognitoUserProfileResponse{}
+func (p *AmazonCognitoProvider) GetUserProfile(AccessToken string) (*getCognitoUserProfileResponse, error) {
+	response := &getCognitoUserProfileResponse{}
 
 	if AccessToken == "" {
 		return nil, ErrBadRequest
