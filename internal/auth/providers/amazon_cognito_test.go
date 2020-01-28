@@ -372,7 +372,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 		groupsError           error
 		checkMembershipGroups []string
 		listMembershipsFunc   func(string) (groups.MemberSet, bool)
-		getUserProfileResp    GetCognitoUserProfileResponse
+		getUserProfileResp    getCognitoUserProfileResponse
 		expectedGroups        []string
 		expectedErrorString   string
 	}{
@@ -386,7 +386,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 			name:               "no username returned from Cognito results in error",
 			inputAllowedGroups: []string{"group1"},
 			expectedGroups:     []string{},
-			getUserProfileResp: GetCognitoUserProfileResponse{
+			getUserProfileResp: getCognitoUserProfileResponse{
 				Username: "",
 			},
 			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return nil, false },
@@ -397,7 +397,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 			inputAllowedGroups:  []string{"group1"},
 			groupsError:         fmt.Errorf("should not get here"),
 			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{"username": {}}, true },
-			getUserProfileResp: GetCognitoUserProfileResponse{
+			getUserProfileResp: getCognitoUserProfileResponse{
 				Username: "username",
 			},
 			expectedGroups: []string{"group1"},
@@ -407,7 +407,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 			inputAllowedGroups:  []string{"group1"},
 			groupsError:         fmt.Errorf("should not get here"),
 			listMembershipsFunc: func(string) (groups.MemberSet, bool) { return groups.MemberSet{}, true },
-			getUserProfileResp: GetCognitoUserProfileResponse{
+			getUserProfileResp: getCognitoUserProfileResponse{
 				Username: "username",
 			},
 			expectedGroups: []string{},
@@ -425,7 +425,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 					return groups.MemberSet{}, false
 				}
 			},
-			getUserProfileResp: GetCognitoUserProfileResponse{
+			getUserProfileResp: getCognitoUserProfileResponse{
 				Username: "username",
 			},
 			expectedGroups: []string{"group1"},
@@ -442,7 +442,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 					return groups.MemberSet{}, false
 				}
 			},
-			getUserProfileResp: GetCognitoUserProfileResponse{
+			getUserProfileResp: getCognitoUserProfileResponse{
 				Username: "username",
 			},
 			expectedErrorString: "error",
@@ -459,7 +459,7 @@ func TestAmazonCognitoValidateGroupMembership(t *testing.T) {
 					return groups.MemberSet{}, true
 				}
 			},
-			getUserProfileResp: GetCognitoUserProfileResponse{
+			getUserProfileResp: getCognitoUserProfileResponse{
 				Username: "username",
 			},
 			expectedGroups: []string{"group1"},
